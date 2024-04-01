@@ -1,0 +1,30 @@
+FROM rust:alpine as builder
+
+WORKDIR /app
+
+RUN apk add --no-cache openssl-dev pkgconfig musl-dev perl make
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry cargo install cargo-strip
+
+COPY . . 
+
+RUN --mount=type=cache,target=/usr/local/cargo/registry --mount=type=cache,target=./target \
+    cargo build --release --features ecs && \
+    mv target/release/ryanz-2 /usr/local/bin/scraper
+
+FROM alpine:3
+
+RUN apk add --no-cache chromium chromium-chromedriver parallel net-tools udev ttf-freefont
+
+COPY --from=builder /usr/local/bin/scraper /usr/local/bin/scraper
+
+ENV RUST_BACKTRACE="full"
+
+WORKDIR /home
+ENV HOME=/home
+
+EXPOSE 80
+
+# fail if any command fails
+# log if chromedriver is running at port 9515
+CMD parallel --halt now,fail=1 --linebuffer -j0 ::: 'chromedriver --verbose' 'scraper'
